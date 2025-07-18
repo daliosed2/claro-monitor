@@ -1,0 +1,21 @@
+name: Claro Monitor
+
+on:
+  schedule:
+    - cron: '0 * * * *'   # cada hora (UTC)
+  workflow_dispatch:
+
+jobs:
+  run-bot:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: |
+          python -m pip install --upgrade pip
+          pip install requests beautifulsoup4 python-dotenv
+      - env:
+          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+        run: python vigilante_claro.py
