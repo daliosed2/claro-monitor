@@ -113,28 +113,22 @@ def guardar_estado(lista: list[dict]):
 # ---------- BUCLE PRINCIPAL --------------------------------------------------
 def main():
     conocidos = {d["id"] for d in cargar_estado() if es_valido(d)}
-    notify(f"Monitor iniciado. Docs validos conocidos: {len(conocidos)}")
+    notify(f"Monitor iniciado. Docs válidos conocidos: {len(conocidos)}")
 
-    while True:
-        try:
-            docs = obtener_documentos()
-            nuevos = [d for d in docs if d["id"] not in conocidos and es_valido(d)]
+    try:
+        docs = obtener_documentos()
+        nuevos = [d for d in docs if d["id"] not in conocidos and es_valido(d)]
 
-            for d in nuevos:
-                notify(f"Nuevo documento: {d['titulo']} ({d['publicado']})\n{d['url']}")
-                conocidos.add(d["id"])
+        for d in nuevos:
+            notify(f"Nuevo documento: {d['titulo']} ({d['publicado']})\n{d['url']}")
+            conocidos.add(d["id"])
 
-            if nuevos:
-                guardar_estado(docs)
-            else:
-    
-                notify("Sin novedades en esta pasada")
-            
-
-            time.sleep(CHECK_INTERVAL)
-        except Exception as e:
-            notify(f"⚠️ Error general: {e}")
-            time.sleep(300)  # espera 5 min y reintenta
+        if nuevos:
+            guardar_estado(docs)
+        else:
+            notify("Sin novedades en esta pasada")
+    except Exception as e:
+        notify(f"⚠️ Error general: {e}")
 
 if __name__ == "__main__":
     main()
