@@ -2,14 +2,14 @@ name: Claro Monitor
 
 on:
   schedule:
-    - cron: '0 * * * *'   # cada hora (UTC)
+      - cron: '0 */3 * * 1-5'   # minuto 0, cada 3 h, lunes-viernes
   workflow_dispatch:
 
 jobs:
   run-bot:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4  ›
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
