@@ -77,20 +77,18 @@ def obtener_documentos() -> list[dict]:
 
 # ---------- NOTIFICACIÓN: CONSOLA + DISCORD ----------------------------------
 def notify(msg: str):
-    """Muestra el mensaje en consola y lo envía al webhook de Discord."""
-    # Limpia caracteres fuera de ASCII básico para evitar errores
-    msg_ascii = re.sub(r"[^\x00-\x7F]", " ", msg)
-
-    # Consola
     ts = datetime.now().strftime("[%d/%m %H:%M] ")
-    print(ts + msg_ascii)
 
-    # Discord
+    # 👉 Consola: versión sin caracteres raros
+    console_msg = re.sub(r"[^\x00-\x7F]", " ", msg)
+    print(ts + console_msg)
+
+    # 👉 Discord: mensaje original (UTF-8 completo)
     if DISCORD_WEBHOOK:
         try:
             requests.post(
                 DISCORD_WEBHOOK,
-                json={"content": msg_ascii},
+                json={"content": msg},          # ← usa msg, no console_msg
                 timeout=10,
             )
         except requests.RequestException as e:
