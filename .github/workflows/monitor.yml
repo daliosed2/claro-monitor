@@ -2,9 +2,8 @@ name: Claro Monitor
 
 on:
   schedule:
-    - cron: '0 */3 * * 1-5'   # minuto 0, cada 3 h, lunes-viernes
+    - cron: '0 */3 * * *'   # minuto 0, cada 3 h, cualquier día
   workflow_dispatch:
-
 jobs:
   run-bot:
     runs-on: ubuntu-latest
