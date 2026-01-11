@@ -8,7 +8,7 @@ Vigilante de documentos Claro (sin navegador)
 REQUISITOS:
     pip install requests beautifulsoup4 python-dotenv
 
-ARCHIVO .env (en la misma carpeta):
+ARCHIVO .env (en la misma carpeta): 
     DISCORD_WEBHOOK=https://discord.com/api/webhooks/XXXXXXXXXX
 """
 
