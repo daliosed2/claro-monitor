@@ -101,6 +101,7 @@ def cargar_estado() -> list[dict]:
     return []
 
 
+
 def guardar_estado(lista: list[dict]):
     actuales = [d for d in lista if es_valido(d)]
     STATE_FILE.write_text(
