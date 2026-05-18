@@ -1,19 +1,31 @@
 # -*- coding: utf-8 -*-
-import os, re
+"""
+Vigilante de documentos Claro
+- Lee jsonDoc del HTML estático
+- Notifica documentos Vigentes del mes actual por Discord
+"""
+
+import json, os, re
 from datetime import datetime
+from pathlib import Path
 
 import requests
 from bs4 import BeautifulSoup
 from dotenv import load_dotenv
 
 URL = "https://www.claro.com.ec/personas/legal-y-regulatorio/"
+STATE_FILE = Path("claro_docs.json")
+
 HEADERS = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124.0 Safari/537.36"
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                  "AppleWebKit/537.36 Chrome/124.0 Safari/537.36"
 }
 
 load_dotenv()
 DISCORD_WEBHOOK = os.getenv("DISCORD_WEBHOOK")
 
+
+# ── Helpers ──────────────────────────────────────────────────────────────────
 
 def notify(msg: str):
     ts = datetime.now().strftime("[%d/%m %H:%M] ")
@@ -25,51 +37,104 @@ def notify(msg: str):
             print("Error Discord:", e)
 
 
-def diagnosticar_v3():
+def es_mes_actual(fecha_dd_mm_yyyy: str) -> bool:
+    """True si la fecha (dd-mm-aaaa) está en el mes y año actuales."""
+    try:
+        f = datetime.strptime(fecha_dd_mm_yyyy, "%d-%m-%Y")
+        hoy = datetime.now()
+        return f.year == hoy.year and f.month == hoy.month
+    except ValueError:
+        return False
+
+
+def es_valido(doc: dict) -> bool:
+    """Vigente + publicado en el mes actual."""
+    vig = doc.get("fc_vigencia_descripcion", "").lower().strip()
+    return vig.startswith("vigente") and es_mes_actual(doc.get("fd_fecha_publicacion", ""))
+
+
+# ── Extracción ───────────────────────────────────────────────────────────────
+
+def obtener_documentos() -> list[dict]:
     html = requests.get(URL, timeout=30, headers=HEADERS).text
     soup = BeautifulSoup(html, "html.parser")
 
-    # ── 1. Ver los primeros 3 scripts que contienen fc_titulo ────────
-    notify("🔍 **=== SCRIPTS CON fc_titulo (primeros 3) ===**")
-    count = 0
-    for i, s in enumerate(soup.find_all("script", string=True)):
-        texto = s.string or ""
-        if "fc_titulo" in texto:
-            # mostrar los primeros 600 chars del script
-            snippet = texto.strip()[:600].replace("\n", " ")
-            notify(f"**[script {i}]:** `{snippet}`")
-            count += 1
-            if count >= 3:
-                break
-
-    # ── 2. Buscar el patrón exacto alrededor de fc_titulo ────────────
-    notify("📌 **=== CONTEXTO EXACTO DE fc_titulo ===**")
-    idx = html.find("fc_titulo")
-    if idx != -1:
-        fragmento = html[max(0, idx-200):idx+400].replace("\n", " ")
-        notify(f"`{fragmento}`")
-
-    # ── 3. Buscar cómo se declara el array/objeto ────────────────────
-    notify("🗂️ **=== PATRONES DE ASIGNACIÓN ===**")
-    patrones = [
-        r"\w+\s*=\s*\[",          # variable = [
-        r"\w+\.push\(",            # array.push(
-        r"var\s+\w+\s*=\s*\{",    # var x = {
-        r"let\s+\w+\s*=\s*\[",    # let x = [
-        r"const\s+\w+\s*=\s*\[",  # const x = [
-    ]
-    for s in soup.find_all("script", string=True):
-        texto = s.string or ""
-        if "fc_titulo" not in texto:
+    for script in soup.find_all("script", string=True):
+        texto = script.string or ""
+        if "jsonDoc" not in texto:
             continue
-        for pat in patrones:
-            matches = re.findall(pat, texto[:2000])
-            if matches:
-                notify(f"  patrón `{pat}` → {matches[:5]}")
-        break  # solo el primer script relevante
+
+        match = re.search(r"var\s+jsonDoc\s*=\s*(\[.*?\]);", texto, re.S)
+        if not match:
+            continue
+
+        raw = match.group(1)
+
+        # Reparar encoding latin1 mal interpretado (Ã­ → í, etc.)
+        raw = raw.encode("latin1", errors="replace").decode("utf-8", errors="replace")
+
+        docs_raw = json.loads(raw)
+
+        return [
+            {
+                "id":        d.get("fi_documento"),
+                "titulo":    d.get("fc_titulo"),
+                "publicado": d.get("fd_fecha_publicacion"),
+                "vigencia":  d.get("fc_vigencia_descripcion"),
+                "tema":      d.get("fc_tema_descripcion"),
+                "url":       "https://www.claro.com.ec" + d.get("fc_url_documento", ""),
+            }
+            for d in docs_raw
+        ]
+
+    raise RuntimeError("No se encontró jsonDoc en el HTML")
+
+
+# ── Estado ───────────────────────────────────────────────────────────────────
+
+def cargar_estado() -> set:
+    if STATE_FILE.exists():
+        data = json.loads(STATE_FILE.read_text(encoding="utf-8"))
+        return {d["id"] for d in data}
+    return set()
+
+
+def guardar_estado(docs: list[dict]):
+    validos = [d for d in docs if es_valido(d)]
+    STATE_FILE.write_text(
+        json.dumps(validos, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+
+
+# ── Main ─────────────────────────────────────────────────────────────────────
+
+def main():
+    conocidos = cargar_estado()
+    notify(f"🟢 Monitor iniciado. IDs conocidos: {len(conocidos)}")
+
+    try:
+        docs = obtener_documentos()
+        notify(f"📄 Documentos totales encontrados: {len(docs)}")
+
+        nuevos = [d for d in docs if d["id"] not in conocidos and es_valido(d)]
+
+        if nuevos:
+            for d in nuevos:
+                notify(
+                    f"🆕 **Nuevo documento**\n"
+                    f"📌 {d['titulo']}\n"
+                    f"🗂️ Tema: {d['tema']}\n"
+                    f"📅 Publicado: {d['publicado']}\n"
+                    f"🔗 {d['url']}"
+                )
+            guardar_estado(docs)
+        else:
+            notify("✅ Sin novedades en esta pasada")
+
+    except Exception as e:
+        notify(f"⚠️ Error: {e}")
 
 
 if __name__ == "__main__":
-    notify("🚀 Diagnóstico v3...")
-    diagnosticar_v3()
-    notify("✅ v3 completo")
+    main()
