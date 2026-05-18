@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-import json, os, re
+import os, re
 from datetime import datetime
 
 import requests
@@ -25,62 +25,51 @@ def notify(msg: str):
             print("Error Discord:", e)
 
 
-def diagnosticar_pagina():
+def diagnosticar_v3():
     html = requests.get(URL, timeout=30, headers=HEADERS).text
     soup = BeautifulSoup(html, "html.parser")
 
-    # ── 1. Buscar palabras clave del nuevo formato ───────────────────
-    notify("🔎 **=== PALABRAS CLAVE NUEVAS ===**")
-    claves = [
-        "fc_titulo", "fi_documento", "fd_fecha", "fc_vigencia",
-        "vigente", "Vigente", "fc_url_documento",
-        "fecha_publicacion", "documentos", "regulatorio",
-        "\"titulo\"", "\"vigencia\"", "\"publicado\"",
-        "XMLHttpRequest", "url:", "endpoint",
-    ]
-    for clave in claves:
-        count = html.count(clave)
-        if count > 0:
-            notify(f"  ✅ '{clave}' aparece {count} veces")
-        else:
-            notify(f"  ❌ '{clave}' no encontrado")
-
-    # ── 2. Buscar en scripts inline palabras relacionadas ────────────
-    notify("📝 **=== SCRIPTS CON 'legal' o 'documento' ===**")
+    # ── 1. Ver los primeros 3 scripts que contienen fc_titulo ────────
+    notify("🔍 **=== SCRIPTS CON fc_titulo (primeros 3) ===**")
+    count = 0
     for i, s in enumerate(soup.find_all("script", string=True)):
         texto = s.string or ""
-        if any(k in texto.lower() for k in ["legal", "documento", "vigencia", "regulatorio", "xhr", "xmlhttprequest"]):
-            snippet = texto.strip()[:500].replace("\n", " ")
-            notify(f"  [script {i}]: {snippet}")
+        if "fc_titulo" in texto:
+            # mostrar los primeros 600 chars del script
+            snippet = texto.strip()[:600].replace("\n", " ")
+            notify(f"**[script {i}]:** `{snippet}`")
+            count += 1
+            if count >= 3:
+                break
 
-    # ── 3. Buscar tablas o divs con documentos ───────────────────────
-    notify("📋 **=== TABLAS EN LA PÁGINA ===**")
-    tablas = soup.find_all("table")
-    notify(f"  Tablas encontradas: {len(tablas)}")
-    for i, t in enumerate(tablas[:3]):
-        snippet = t.get_text(separator=" | ", strip=True)[:300]
-        notify(f"  tabla[{i}]: {snippet}")
-
-    # ── 4. Buscar divs o elementos con clase relacionada ────────────
-    notify("🗂️ **=== DIVS CON CLASE 'legal' o 'doc' ===**")
-    for tag in soup.find_all(True, class_=re.compile(r"legal|doc|regulat|vigencia", re.I)):
-        snippet = tag.get_text(strip=True)[:200]
-        clase = tag.get("class")
-        notify(f"  <{tag.name} class={clase}>: {snippet}")
-
-    # ── 5. Muestra fragmento del HTML donde aparece 'Vigente' ────────
-    notify("📌 **=== CONTEXTO DONDE APARECE 'Vigente' ===**")
-    idx = html.find("Vigente")
+    # ── 2. Buscar el patrón exacto alrededor de fc_titulo ────────────
+    notify("📌 **=== CONTEXTO EXACTO DE fc_titulo ===**")
+    idx = html.find("fc_titulo")
     if idx != -1:
-        fragmento = html[max(0, idx-300):idx+300].replace("\n", " ")
-        notify(f"  ...{fragmento}...")
-    else:
-        notify("  'Vigente' no encontrado en HTML")
+        fragmento = html[max(0, idx-200):idx+400].replace("\n", " ")
+        notify(f"`{fragmento}`")
 
-    notify(f"📄 HTML total: {len(html):,} caracteres")
+    # ── 3. Buscar cómo se declara el array/objeto ────────────────────
+    notify("🗂️ **=== PATRONES DE ASIGNACIÓN ===**")
+    patrones = [
+        r"\w+\s*=\s*\[",          # variable = [
+        r"\w+\.push\(",            # array.push(
+        r"var\s+\w+\s*=\s*\{",    # var x = {
+        r"let\s+\w+\s*=\s*\[",    # let x = [
+        r"const\s+\w+\s*=\s*\[",  # const x = [
+    ]
+    for s in soup.find_all("script", string=True):
+        texto = s.string or ""
+        if "fc_titulo" not in texto:
+            continue
+        for pat in patrones:
+            matches = re.findall(pat, texto[:2000])
+            if matches:
+                notify(f"  patrón `{pat}` → {matches[:5]}")
+        break  # solo el primer script relevante
 
 
 if __name__ == "__main__":
-    notify("🚀 Iniciando diagnóstico v2...")
-    diagnosticar_pagina()
-    notify("✅ Diagnóstico v2 completo")
+    notify("🚀 Diagnóstico v3...")
+    diagnosticar_v3()
+    notify("✅ v3 completo")
