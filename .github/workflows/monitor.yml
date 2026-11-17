@@ -1,9 +1,6 @@
 name: Claro Monitor
 
 on:
-  push:
-    branches: [main]
-    paths: ['.github/workflows/monitor.yml']
   schedule:
     # Lunes a viernes, 09:00 America/Guayaquil (14:00 UTC).
     - cron: '0 14 * * MON-FRI'
